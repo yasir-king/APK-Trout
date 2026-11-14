@@ -29,7 +29,7 @@ headers = {
     "User-Agent": "APKTrout-Bot/1.0"
 }
 
-# 4. State Management (taake purani posts repeat na hon)
+# 4. State Management
 if os.path.exists(STATE_FILE):
     try:
         with open(STATE_FILE, "r") as f:
@@ -51,14 +51,14 @@ def fetch_posts():
 def generate_summary(title, content):
     """AI se short summary likhwana"""
     prompt = f"""
-    Write a clear, compelling 60 to 80-word short summary for this app/game.
+    Write a clear, compelling 50 to 70-word short summary for this app/game.
     
     App Title: {title}
     Details: {content[:1200]}
     
     Rules:
-    - Jump straight to what the app does and why it is useful.
-    - No filler greetings or AI prefixes.
+    - Direct and engaging overview of features.
+    - No robotic introductory phrases.
     """
     try:
         response = model.generate_content(prompt)
@@ -67,17 +67,17 @@ def generate_summary(title, content):
         print(f"AI generation failed for '{title}': {e}")
         return None
 
-def update_post_summary(post_id, summary_text):
-    """Sirf Post ki Excerpt update karna (content bilkul safe rahega)"""
+def update_post_summary(post_id, summary_html):
+    """Post ki Excerpt me Summary + Read More Button update karna"""
     url = f"{WP_BASE_URL}/posts/{post_id}"
-    payload = {"excerpt": summary_text}
+    payload = {"excerpt": summary_html}
     res = requests.post(url, json=payload, headers=headers)
     return res.status_code == 200
 
 def main():
     posts = fetch_posts()
     if not posts:
-        print("Koi post nahi mili ya API access block hua.")
+        print("Koi post nahi mili ya API connection error.")
         return
 
     changes_made = False
@@ -86,16 +86,21 @@ def main():
         post_id = post["id"]
         title = post.get("title", {}).get("rendered", "")
         content = post.get("content", {}).get("rendered", "")
+        post_link = post.get("link", f"https://apktrout.com/?p={post_id}")
         existing_excerpt = post.get("excerpt", {}).get("rendered", "").strip()
 
-        # Agar pehle summary nahi bani hui aur ID processed list me nahi hai
+        # Check: Nayi post jiski summary pehle se mojood na ho
         if post_id not in processed_ids and not existing_excerpt:
-            print(f"Summary ban rahi hai: Post ID {post_id} ({title})...")
-            summary = generate_summary(title, content)
+            print(f"Generating summary for Post ID: {post_id} ({title})...")
+            summary_text = generate_summary(title, content)
             
-            if summary:
-                if update_post_summary(post_id, summary):
-                    print(f"Success! Post {post_id} par summary lag gayi.")
+            if summary_text:
+                # Summary + Read More link format
+                summary_html = f"""<p>{summary_text}</p>
+<p><a href="{post_link}" class="read-more-btn" style="display:inline-block; margin-top:8px; font-weight:bold; color:#0073aa; text-decoration:none;">Read More &raquo;</a></p>"""
+                
+                if update_post_summary(post_id, summary_html):
+                    print(f"Success: Post {post_id} updated with summary and Read More button.")
                     processed_ids.add(post_id)
                     changes_made = True
                 else:
@@ -103,14 +108,14 @@ def main():
         else:
             processed_ids.add(post_id)
 
-    # State file update karna
+    # State update
     with open(STATE_FILE, "w") as f:
         json.dump(list(processed_ids), f, indent=2)
 
     if changes_made:
-        print("Bot ne nayi summaries update kar di hain.")
+        print("Done: All new posts have been updated.")
     else:
-        print("Sabhi posts already updated hain, koi nayi summary ki zaroorat nahi thi.")
+        print("Done: No new posts required an update.")
 
 if __name__ == "__main__":
     main()
