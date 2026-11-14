@@ -1,37 +1,35 @@
 import json
 import os
 import re
-from datetime import datetime
 import google.generativeai as genai
 import requests
 
-# 1. API Key check
+# 1. API Key Setup
 AI_KEY = os.environ.get("AI_API_KEY")
 WP_BASE_URL = "https://apktrout.com/wp-json/wp/v2"
 POSTS_DIR = "posts"
 STATE_FILE = "bot_state.json"
 
 if not AI_KEY:
-    print("Error: AI_API_KEY missing in GitHub Secrets.")
+    print("Error: AI_API_KEY secret mojood nahi hai.")
     exit(1)
 
-# 2. Setup Gemini AI
 genai.configure(api_key=AI_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# 3. Load processed posts state
+# 2. State file load karna
 if os.path.exists(STATE_FILE):
     try:
-        with open(STATE_FILE, "r") as f:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
             processed_ids = set(json.load(f))
     except Exception:
         processed_ids = set()
 else:
     processed_ids = set()
 
-def fetch_recent_posts():
-    """WordPress se recent published posts fetch karna (No password needed)"""
-    url = f"{WP_BASE_URL}/posts?per_page=10&status=publish"
+def fetch_latest_posts():
+    """Website se latest 5 published posts uthana"""
+    url = f"{WP_BASE_URL}/posts?per_page=5&status=publish"
     try:
         res = requests.get(url, timeout=20)
         if res.status_code == 200:
@@ -42,15 +40,15 @@ def fetch_recent_posts():
     return []
 
 def clean_html(raw_html):
-    """HTML tags ko clean text mein convert karna"""
+    """HTML tags ko clean text banana"""
     clean_text = re.sub(r"<[^>]+>", "", raw_html)
     return clean_text.strip()
 
 def generate_summary(title, content):
-    """AI se short summary likhwana"""
+    """AI se 50-70 words ki short summary likhwana"""
     prompt = f"""
-    Write a clear, compelling, 50 to 70-word summary for this app/game.
-    Focus directly on features and usage. Do not add introductory fluff.
+    Write a clear, compelling 50 to 70-word short summary for this app/game.
+    Directly focus on main features and use-case. Avoid any robotic introductory fluff.
 
     App Title: {title}
     App Details: {content[:1200]}
@@ -59,13 +57,13 @@ def generate_summary(title, content):
         res = model.generate_content(prompt)
         return res.text.strip()
     except Exception as e:
-        print(f"AI generation failed for '{title}': {e}")
+        print(f"AI error for '{title}': {e}")
         return None
 
 def main():
-    posts = fetch_recent_posts()
+    posts = fetch_latest_posts()
     if not posts:
-        print("Koi new posts nahi mili ya API access nahi ho raha.")
+        print("Koi post nahi mili ya API access nahi ho raha.")
         return
 
     os.makedirs(POSTS_DIR, exist_ok=True)
@@ -74,6 +72,7 @@ def main():
     for post in posts:
         post_id = post["id"]
 
+        # Agar pehle se ban chuki hai to skip karein
         if post_id in processed_ids:
             continue
 
@@ -81,11 +80,11 @@ def main():
         raw_content = clean_html(post.get("content", {}).get("rendered", ""))
         post_link = post.get("link", f"https://apktrout.com/?p={post_id}")
 
-        print(f"Processing new post: {title} (ID: {post_id})...")
+        print(f"Generating summary for: {title} (ID: {post_id})...")
         summary = generate_summary(title, raw_content)
 
         if summary:
-            # File name clean karna
+            # File name ko clean slug banana
             slug = re.sub(r"[^\w\s-]", "", title).strip().lower()
             slug = re.sub(r"[-\s]+", "-", slug)[:40]
             filename = f"{POSTS_DIR}/{post_id}_{slug}.md"
@@ -104,16 +103,16 @@ def main():
 
             processed_ids.add(post_id)
             new_posts_added = True
-            print(f"Saved to GitHub: {filename}")
+            print(f"Public post saved: {filename}")
 
-    # Processed list update karna
+    # State update
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(list(processed_ids), f, indent=2)
 
     if new_posts_added:
-        print("Completed: Nayi summary files ban chuki hain.")
+        print("Done: Nayi posts ki summary files commit ke liye tayar hain.")
     else:
-        print("Completed: Koi nayi post create karne ki zaroorat nahi thi.")
+        print("Done: Tamam posts pehle se bani hui hain.")
 
 if __name__ == "__main__":
     main()
