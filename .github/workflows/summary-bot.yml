@@ -1,4 +1,3 @@
-
 name: APK Trout Automatic Summary Bot
 
 on:
@@ -25,17 +24,14 @@ jobs:
       - name: Install Requirements
         run: pip install -r requirements.txt
 
-      - name: Run APK Trout Bot
+      - name: Run Summary Bot
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
         run: python bot.py
 
-      - name: Save Bot State
+      - name: Commit and Push New Public Posts
         run: |
           git config user.name "APK Trout Bot"
           git config user.email "bot@users.noreply.github.com"
-          git add bot_state.json
-          git diff --cached --quiet || git commit -m "Update bot state"
-          git push
+          git add posts/*.md bot_state.json
+          git diff --cached --quiet || (git commit -m "Auto-post new app summary" && git push)
